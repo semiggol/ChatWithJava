@@ -32,9 +32,9 @@ public class Message {
 	public static final String ERR_MSG_023 = "Client had gone.";
 	public static final String ERR_MSG_024 = "Client.connect() is failed.";
 	public static final String ERR_MSG_025 = "ClosedChannelException on client.";
-	public static final String ERR_MSG_026 = "Pipe for worker is broken.";
+	/* public static final String ERR_MSG_026 = "Pipe for worker is broken."; */
 	public static final String ERR_MSG_027 = "Registration to server is failed.";
-	public static final String ERR_MSG_028 = "write error on pipe.";
+	/* public static final String ERR_MSG_028 = "write error on pipe."; */
 	public static final String ERR_MSG_029 = "Opening file or getting size to transfer failed.";
 	public static final String ERR_MSG_030 = "Reading file to transfer failed.";
 	public static final String ERR_MSG_031 = "Sending file to transfer failed.";

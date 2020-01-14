@@ -3,7 +3,6 @@ package jang.client;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
-import java.nio.channels.Pipe;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -28,11 +27,6 @@ public class Main {
 	
 	private Selector mySelector;
 	private ClientInfo myClient;
-	private Pipe.SourceChannel readPipe;
-	private SelectionKey readPipeKey;
-	private Pipe.SinkChannel writePipe;
-	private ByteBuffer rData;
-	private ByteBuffer wData;
 	private LinkedList<String> inputMsgs;
 	private Scanner scan = null;
 	private Charset charset = null;
@@ -103,35 +97,10 @@ public class Main {
 		myClient.setCreated(ClientInfo.CREATED_BY_CLIENT);
 		myClient.setStatus(ClientInfo.CLIENT_CONNECTING);
 		
-		/* create pipe for System.in */
-		Pipe pipe;
-		try {
-			pipe = Pipe.open();
-		} catch (IOException e) {
-			e.printStackTrace();
-			try {
-				mySelector.close();
-			} catch (IOException e1) {
-				e1.printStackTrace();
-			}
-			return -1;
-		}
-		writePipe = pipe.sink();
-		readPipe  = pipe.source();
-		try {
-			readPipe.configureBlocking(false);
-			readPipeKey = readPipe.register(mySelector, SelectionKey.OP_READ);
-		} catch (ClosedChannelException e) {
-			e.printStackTrace();
-		} catch (IOException ie) {
-			ie.printStackTrace();
-		}
-		rData = ByteBuffer.allocate(1);
-		wData = ByteBuffer.allocate(1);
-		byte b = 1;
-		wData.put(b);
+		/* create input message list for System.in */
 		inputMsgs = new LinkedList<String>();
 		
+		/* use UTF-8 encoding/decoding for chat message */
     charset = Charset.forName("UTF-8");
     
 		return 0;
@@ -184,72 +153,76 @@ public class Main {
 					}
 				}
 				else if (key.isReadable()) {
-					/* 2.read() */
-					if (key.equals(readPipeKey)) {
-						/* read from System.in and process the message */
-						result = processInputMsg();
+					/* read from Server and process the message */
+					result = readChatMsg(key);
+					if (result == 1) {
+						processChatMsg();
 					}
-					else {
-						/* read from Server and process the message */
-						result = readChatMsg(key);
-						if (result == 1) {
-							processChatMsg();
-						}
-					}
-					if (result < 0) {
+					else if (result < 0) {
 						return result;
 					} 
 				}
 				else if(key.isWritable()) {
 					/* 3.write() */
-					//writeToServer(null, key);
+					myClient.writeToSocket(null);
 				}
 				iter.remove();
 			}
+			
+			String inputMsg = manageMsgList(null);
+			if (inputMsg != null) {
+				result = processInputMsg(inputMsg);
+				if (result < 0) {
+					return result;
+				}
+			}
+			
 		} /* end while loop */
 	}
 
-	
 	/** process message */
 	private void processChatMsg() {
 		ChatMessage chatMsg = myClient.getReadData();
 		int msgtype = chatMsg.getMsgtype();
 		ByteBuffer msgBuf = chatMsg.getMessageBuffer();
 		
-		if (msgtype == ChatProtocol.MSGTYPE_REGISTERED) {
+		switch (msgtype) {
+		case ChatProtocol.MSGTYPE_REGISTERED:
 			/* Registered */ 
 			processRegistered(msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_PING) {
+			break;
+		case ChatProtocol.MSGTYPE_PING:
 			/* PING/PONG */
 			processPing(msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REPLY_MESSAGE) {
+			break;
+		case ChatProtocol.MSGTYPE_REPLY_MESSAGE:
 			/* Normal chat */
 			processNormalMsg(msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REPLY_UPLOAD) {
+			break;
+		case ChatProtocol.MSGTYPE_REPLY_UPLOAD:
 			/* Upload file is finished */
 			processUploadResult(chatMsg, msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REPLY_DOWNLOAD) {
+			break;
+		case ChatProtocol.MSGTYPE_REPLY_DOWNLOAD:
+			/* save file */
 			runSaveFileThread(msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_TRANSFER_FILE) {
+			break;
+		case ChatProtocol.MSGTYPE_TRANSFER_FILE:
 			/* Download file .. */
 			saveFileContents(msgBuf);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_GIVE_FRIENDS) {
+			break;
+		case ChatProtocol.MSGTYPE_GIVE_FRIENDS:
 			/* Normal chat */
 			processNormalMsg(msgBuf);
+			break;
+		case ChatProtocol.MSGTYPE_REQUEST_KICKOUT:
+			/* TODO: kickout */
+			break;
+		default:
+				/* ChatProtocol.MSGTYPE_UNKNOWN */
+			Message.printMsg("Unknown Message");
 		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REQUEST_KICKOUT) {
-			
-		}
-		else { /* ChatProtocol.MSGTYPE_UNKNOWN */
-			
-		}
-		
+
 		chatMsg.initMessageBuffer();
 	}
 
@@ -359,44 +332,30 @@ public class Main {
 	private int readChatMsg(SelectionKey key) {
 		int readResult = 0;
 		readResult = myClient.readFromSocket();
-		if (readResult == ClientInfo.READ_MSG_ERROR) {
+		switch (readResult) {
+		case ClientInfo.READ_MSG_ERROR:
 			myClient.close();
 			return -2; /* program exit */
-		}
-		else if (readResult == ClientInfo.READ_MSG_INCOMPLETE) {
+		case ClientInfo.READ_MSG_INCOMPLETE:
 			return 0;
-		}
-		else if (readResult == ClientInfo.READ_MSG_COMPLETE) {
+		case ClientInfo.READ_MSG_COMPLETE:
 			return 1;
-		}
-		else {
+		default:
 			/* unknown result */
 		}
 		
-		return 0;
+		return -2;
 	}
 
 	/** read from pipe(worker - System.in) and process message */
-	private int processInputMsg() {
-		try {
-			rData.clear();
-			readPipe.read(rData);
-		} catch (IOException e) {
-			/* pipe is broken */
-			Message.myLog(Message.ERR_MSG_026);
-			e.printStackTrace();
-			return -1;
-		}
-		rData.flip();
-		
-		String msg = manageMsgList(null);
+	private int processInputMsg(String msg) {
 		if (myClient.getStatus() != ClientInfo.CLIENT_READY) {
 			/* input message is used on READY
 			 * So, drop this msg */
 			return 0;
 		}
 		
-		/* TODO: process input message */
+		/* process input message */
 		if (msg.length() == 2) {
 			if (msg.equals("/h")) {
 				/* help message */
@@ -425,12 +384,10 @@ public class Main {
 			String type = (String) msg.subSequence(0, 3);
 			if (type.equals("/u ")) {
 				/* upload file: this is process by worker */
-				/* TODO: 이거 중복 체크 인가? */
 				return 0;
 			}
 			else if (type.equals("/d ")) {
 				/* download file message */
-				/* TODO */
 				downloadMessage(msg);
 				return 0;
 			}
@@ -447,12 +404,6 @@ public class Main {
 	}
 
 	private void closeResource() throws IOException {
-		if (readPipe.isOpen()) {
-			readPipe.close();
-		}
-		if (writePipe.isOpen()) {
-			writePipe.close();
-		}
 		if (mySelector.isOpen()) {
 			mySelector.close();
 		}
@@ -568,13 +519,7 @@ public class Main {
 					}
 					
 					manageMsgList(inputMsg);
-					wData.rewind();
-					try {
-						writePipe.write(wData);
-					} catch (IOException e) {
-						Message.myLog(Message.ERR_MSG_028 + e.toString());
-						e.printStackTrace();
-					}
+					mySelector.wakeup();
 					
 					if (inputMsg.length() == 2 && inputMsg.equals("/q")) {
 						break;

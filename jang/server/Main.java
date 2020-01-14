@@ -297,18 +297,16 @@ public class Main {
 			return null;
 		}
 		readResult = client.readFromSocket();
-		if (readResult == ClientInfo.READ_MSG_ERROR) {
+		switch (readResult) {
+		case ClientInfo.READ_MSG_ERROR:
 			client.close();
 			delClient(client);
 			return null;
-		}
-		else if (readResult == ClientInfo.READ_MSG_INCOMPLETE) {
+		case ClientInfo.READ_MSG_INCOMPLETE:
 			return null;
-		}
-		else if (readResult == ClientInfo.READ_MSG_COMPLETE) {
+		case ClientInfo.READ_MSG_COMPLETE:
 			return client.getReadData();
-		}
-		else {
+		default:
 			/* unknown result */
 		}
 		
@@ -350,40 +348,42 @@ public class Main {
 	private void processMessage(ChatMessage chatMsg, SelectionKey fromKey) {
 		int msgtype = chatMsg.getMsgtype();
 		ByteBuffer msgBuf = chatMsg.getMessageBuffer();
-		if (msgtype == ChatProtocol.MSGTYPE_REGISTER) {
+		switch (msgtype) {
+		case ChatProtocol.MSGTYPE_REGISTER:
 			/* Register */
 			processRegister(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_PING) {
+			break;
+		case ChatProtocol.MSGTYPE_PING:
 			/* PING/PONG */
 			processPing(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REQUEST_MESSAGE) {
+			break;
+		case ChatProtocol.MSGTYPE_REQUEST_MESSAGE:
 			/* Normal chat */
 			ChatMessage.setMsgtypeToHeader(msgBuf, ChatProtocol.MSGTYPE_REPLY_MESSAGE);
 			msgBuf.rewind();
 			processBroadcast(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REQUEST_UPLOAD) {
+			break;
+		case ChatProtocol.MSGTYPE_REQUEST_UPLOAD:
 			/* Upload file */
-			runSaveFileThread(msgBuf, fromKey);	
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_TRANSFER_FILE) {
+			runSaveFileThread(msgBuf, fromKey);
+			break;
+		case ChatProtocol.MSGTYPE_TRANSFER_FILE:
 			/* save file */
 			saveFileContents(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REQUEST_DOWNLOAD) {
+			break;
+		case ChatProtocol.MSGTYPE_REQUEST_DOWNLOAD:
 			/* Download file */
 			processDownload(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_TAKE_FRIENDS) {
+			break;
+		case ChatProtocol.MSGTYPE_TAKE_FRIENDS:
 			/* user info */
 			processTakeFriends(msgBuf, fromKey);
-		}
-		else if (msgtype == ChatProtocol.MSGTYPE_REQUEST_KICKOUT) {
+			break;
+		case ChatProtocol.MSGTYPE_REQUEST_KICKOUT:
 			/* TODO: close the client by Admin */
-		}
-		else { /* ChatProtocol.MSGTYPE_UNKNOWN */
+			break;
+		default:
+			/* ChatProtocol.MSGTYPE_UNKNOWN */
 			Message.myLog(Message.ERR_MSG_033);
 		}
 		
