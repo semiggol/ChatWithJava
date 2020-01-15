@@ -18,6 +18,7 @@ import jang.common.ChatProtocol;
 import jang.common.ClientInfo;
 import jang.common.Message;
 import jang.common.Network;
+import jang.common.ProtocolParsingException;
 import jang.common.ResourceInfo;
 import jang.common.ThreadForFile;
 
@@ -123,9 +124,16 @@ public class Main {
 				}
 				else if (key.isReadable()) {
 					/* 2.read() */
-					ChatMessage msg = readFromClient(key);
-					if (msg != null) {
-						processMessage(msg, key);
+					try {
+					ChatMessage cMsg = readFromClient(key);
+					if (cMsg != null) {
+						processMessage(cMsg, key);
+					}
+					} catch (Exception e) {
+						e.printStackTrace();
+						SocketChannel socketChannel = (SocketChannel) key.channel();
+						ClientInfo client = getClientBySocketChannel(socketChannel);
+						delClient(client);
 					}
 				}
 				else if(key.isWritable()) {
@@ -237,6 +245,9 @@ public class Main {
 	
 	/** remove client from users ArrayList */
 	private void delClient(ClientInfo oldClient) {
+		if (oldClient == null) {
+			return;
+		}
 		String sMsg = null;
 		ByteBuffer encodedMsg = null;
 		int payload = 0;
@@ -253,8 +264,10 @@ public class Main {
 			sMsg = oldClientId + " has gone.";
 			encodedMsg = charset.encode(sMsg);
 			payload = encodedMsg.remaining();
-			newMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REPLY_MESSAGE, payload);
-			if (newMsg == null) {
+			try {
+				newMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REPLY_MESSAGE, payload);
+			} catch (ProtocolParsingException ppe) {
+				ppe.printStackTrace();
 				return;
 			}
 			newMsg.put(encodedMsg);
@@ -287,7 +300,6 @@ public class Main {
 	private ChatMessage readFromClient(SelectionKey key) {
 		SocketChannel socketChannel = (SocketChannel) key.channel();
 		ClientInfo client = getClientBySocketChannel(socketChannel);
-		int readResult = 0;
 		if (client == null) {
 			try {
 				socketChannel.close();
@@ -296,18 +308,19 @@ public class Main {
 			}
 			return null;
 		}
-		readResult = client.readFromSocket();
-		switch (readResult) {
-		case ClientInfo.READ_MSG_ERROR:
+		
+		try {
+			/* read from client */
+			client.readFromSocket();
+			if (client.getReadData().getStatus() == ChatMessage.READ_PAYLOAD_COMPLETE) {
+				return client.getReadData();
+			}
+		} catch (IOException ie) {
 			client.close();
 			delClient(client);
-			return null;
-		case ClientInfo.READ_MSG_INCOMPLETE:
-			return null;
-		case ClientInfo.READ_MSG_COMPLETE:
-			return client.getReadData();
-		default:
-			/* unknown result */
+		} catch (ProtocolParsingException ppe) {
+			client.close();
+			delClient(client);
 		}
 		
 		return null;
@@ -345,7 +358,7 @@ public class Main {
 	}
 
 	/** process message */
-	private void processMessage(ChatMessage chatMsg, SelectionKey fromKey) {
+	private void processMessage(ChatMessage chatMsg, SelectionKey fromKey) throws Exception {
 		int msgtype = chatMsg.getMsgtype();
 		ByteBuffer msgBuf = chatMsg.getMessageBuffer();
 		switch (msgtype) {
@@ -446,14 +459,11 @@ public class Main {
 
 
 	/** send all client info to client */
-	private void processTakeFriends(ByteBuffer msg, SelectionKey key) {
+	private void processTakeFriends(ByteBuffer msg, SelectionKey key) throws ProtocolParsingException {
 		String allClientsId = getAllClientsId();
 		ByteBuffer encodedMsg = charset.encode(allClientsId);
 		int size = encodedMsg.remaining();
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_GIVE_FRIENDS, size);
-		if (bufMsg == null) {
-			return;
-		}
 		bufMsg.put(encodedMsg);
 		bufMsg.flip();
 		bufferToSelectionKey(bufMsg, key);		
@@ -474,7 +484,7 @@ public class Main {
 	}
 
 	/** register */
-	private void processRegister(ByteBuffer msg, SelectionKey key) {
+	private void processRegister(ByteBuffer msg, SelectionKey key) throws ProtocolParsingException {
 		SocketChannel socketChannel = (SocketChannel) key.channel();
 		ByteBuffer encodedMsg = null;
 		int payload = 0;
@@ -511,9 +521,6 @@ public class Main {
 			encodedMsg = charset.encode(newId);
 			payload = encodedMsg.remaining();
 			ByteBuffer newMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REGISTERED, payload);
-			if (newMsg == null) {
-				return;
-			}
 			newMsg.put(encodedMsg);
 			newMsg.flip();
 			bufferToSelectionKey(newMsg, key);

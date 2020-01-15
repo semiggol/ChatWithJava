@@ -88,7 +88,7 @@ public class ClientInfo {
 	/** closesocket */
 	public void close() {
 		try {
-			if (socketChannel.isOpen()) {
+			if (socketChannel != null && socketChannel.isOpen()) {
 				socketChannel.close();
 			}
 		} catch (IOException e) {
@@ -171,60 +171,50 @@ public class ClientInfo {
 	}
 	
 	/** read from remote socket(client/server) */
-	public int readFromSocket() {
+	public void readFromSocket() throws IOException, ProtocolParsingException {
 		ChatMessage readMsg = getReadData();
 		
 		ByteBuffer readBuffer;
-		int readLen = 0;
+		int readHeaderLen = 0;
+		int readBodyLen = 0;
 		
-		try {
-			if (readMsg.getStatus() == ChatMessage.READ_HEADER_INCOMPLETE) {
-				/* read ChatMessage's Header */
-				readBuffer = readMsg.getHeaderBuffer();
-				readLen = socketChannel.read(readBuffer);
-				if (readLen < 0) {
-					/* client send 'close' message */
-					return -1;
-				}
-				else if (readLen == 0) {
-					/* TCP.recvBuffer is empty */
-					return 0;
-				}
-				else {
-					if (readMsg.parseProtocol() == ChatMessage.PARSE_RESULT_FAIL) {
-						return -1;
-					}
-					/* Now, ChatMessage's Header is complete. */
-				}
+		if (readMsg.getStatus() == ChatMessage.READ_HEADER_INCOMPLETE) {
+			/* read ChatMessage's Header */
+			readBuffer = readMsg.getHeaderBuffer();
+			readHeaderLen = socketChannel.read(readBuffer);
+			if (readHeaderLen < 0) {
+				/* client send 'close' message */
+				throw new IOException();
 			}
-			
-			if (readMsg.getStatus() == ChatMessage.READ_PAYLOAD_INCOMPLETE) {
-				/* read ChatMessage's body */
-				readBuffer = readMsg.getMessageBuffer();
-				readLen = socketChannel.read(readBuffer);
-				if (readLen < 0) {
-					/* client send 'close' message */
-					return -1;
-				}
-				else if (readLen == 0) {
-					/* TCP.recvBuffer is empty */
-					return 0;
-				}
-				else {
-					/* Now, check if ChatMessage's body is complete. */
-					readMsg.parseProtocol();
-				}
+			else if (readHeaderLen == 0) {
+				/* TCP.recvBuffer is empty */
+				return;
 			}
-		} catch (IOException e) {
-			Message.myLog(Message.ERR_MSG_012 + " - " + socketChannel.toString());
-			return -1;
+			else {
+				readMsg.parseProtocol();
+				/* Now, ChatMessage's Header is complete. */
+			}
 		}
 		
-		if (readMsg != null &&
-				readMsg.getStatus() == ChatMessage.READ_PAYLOAD_COMPLETE) {
-			return 1;
+		if (readMsg.getStatus() == ChatMessage.READ_PAYLOAD_INCOMPLETE) {
+			/* read ChatMessage's body */
+			readBuffer = readMsg.getMessageBuffer();
+			readBodyLen = socketChannel.read(readBuffer);
+			if (readBodyLen < 0) {
+				/* client send 'close' message */
+				throw new IOException();
+			}
+			else if (readBodyLen == 0) {
+				/* TCP.recvBuffer is empty */
+				return;
+			}
+			else {
+				/* Now, check if ChatMessage's body is complete. */
+				readMsg.parseProtocol();
+			}
 		}
-		return 0;
+		
+		return;
 	}
 	public boolean isAdmin() {
 		return admin;

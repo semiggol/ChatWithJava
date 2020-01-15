@@ -1,12 +1,9 @@
 package jang.common;
 
 import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-import java.util.Enumeration;
 
 public class ResourceInfo {
 	
@@ -25,16 +22,16 @@ public class ResourceInfo {
 		int cpuCnt = Runtime.getRuntime().availableProcessors();
 		InetAddress myAddr = null;
 		InetAddress[] addrs = null;
-		Enumeration<NetworkInterface> myNifs = null;
+		//Enumeration<NetworkInterface> myNifs = null;
 		
 		try {
 			myAddr = InetAddress.getLocalHost();
 			addrs = InetAddress.getAllByName(myAddr.getHostName());
-			myNifs = NetworkInterface.getNetworkInterfaces();
+			//myNifs = NetworkInterface.getNetworkInterfaces();
 		} catch (UnknownHostException uhe) {
 			Message.myLog(Message.ERR_MSG_014);
-		} catch (SocketException se) {
-			Message.myLog(Message.ERR_MSG_015);
+		//} catch (SocketException se) {
+		//	Message.myLog(Message.ERR_MSG_015);
 		}
 		
 		FileSystem fileSystem = FileSystems.getDefault();

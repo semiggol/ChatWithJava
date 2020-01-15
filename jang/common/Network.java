@@ -56,17 +56,10 @@ public class Network {
 		selector = null;
 	}
 	
-	// create ServerSocketChannel
+	/** create ServerSocketChannel */
 	public void createServer() throws IOException, ClosedChannelException {
-		//System.getSecurityManager().checkPermission(new SocketPermission("8080", "accept, connect, listen, resolve"));
-		//System.getSecurityManager().checkPermission(new RuntimePermission("readerThread"));
-
-
-		//ServerSocket ss = new ServerSocket(svrPort, 511);
-		//svrChannel = ss.getChannel();
 		svrChannel = ServerSocketChannel.open();
 		svrChannel.bind(new InetSocketAddress(svrPort));
-		//svrChannel.bind(new InetSocketAddress(svrIp, svrPort));
 		svrChannel.configureBlocking(false); /* nonBlocking */
 		svrChannel.register(selector, SelectionKey.OP_ACCEPT);
 		Message.myLog(Message.SYS_MSG_002 + " port: " + svrPort);
@@ -77,8 +70,7 @@ public class Network {
 		cliChannel = SocketChannel.open();
 		cliChannel.configureBlocking(false); /* nonBlocking */
 		cliChannel.connect(new InetSocketAddress(svrIp, svrPort)); /* connect() */
-		//cliChannel.register(selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 		cliChannel.register(selector, SelectionKey.OP_CONNECT);
-		Message.myLog(Message.SYS_MSG_002 + "ServerAddress: " + svrIp + ":" + svrPort);
+		Message.myLog(Message.SYS_MSG_004 + "ServerAddress: " + svrIp + ":" + svrPort);
 	}
 }

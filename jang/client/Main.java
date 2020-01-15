@@ -17,6 +17,7 @@ import jang.common.ChatProtocol;
 import jang.common.ClientInfo;
 import jang.common.Message;
 import jang.common.Network;
+import jang.common.ProtocolParsingException;
 import jang.common.ResourceInfo;
 import jang.common.ThreadForFile;
 
@@ -32,7 +33,7 @@ public class Main {
 	private Charset charset = null;
 	
 	
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
 		ResourceInfo.infoSystemProperties(ResourceInfo.CHAT_TYPE_CLIENT);
 		
 		System.setSecurityManager(new SecurityManager() {
@@ -48,7 +49,7 @@ public class Main {
 		chatClient.start();
 	}
 	
-	private void start() {
+	private void start() throws Exception {
 		int result = 0;
 		while (true) {
 			/* init - prepare selector, ClientInfo, pipe, .. */
@@ -58,16 +59,13 @@ public class Main {
 			}
 	
 			/* infinite loop for server */
-			result = loop();
-			if (result == 0) {
+			try {
+				loop();
+			} catch (Exception e) {
+				e.printStackTrace();
+				myClient.close();
+				closeResource();
 				return;
-			}
-			else {
-				/* quit */
-				if (result == -2) {
-					return;
-				}
-				/* 다시 while().. */
 			}
 		}
 	}
@@ -110,8 +108,7 @@ public class Main {
 	 * 1. connect()
 	 * 2. read()
 	 * 3. write() */
-	private int loop() {
-		int result = 0;
+	private void loop() throws Exception {
 		while (true) {
 			try {
 				/* select() */
@@ -119,7 +116,7 @@ public class Main {
 			} catch (IOException e) {
 				Message.myLog(Message.ERR_MSG_006);
 				e.printStackTrace();
-				return -1;
+				throw e;
 			}
 			
 			/* TODO: get current time: Date vs Canendar.getInstance()? */
@@ -132,35 +129,18 @@ public class Main {
 				if (key.isConnectable()) {
 					/* 1. a connection was established with a remote server. */
 					checkConnection(key);
+					registerToServer();
 					
-					if (myClient.getStatus() != ClientInfo.CLIENT_CONNECTED) {
-						return 0;
-					}
-					result = registerToServer();
-					if (result < 0) {
-						/* register failed */
-						Message.myLog(Message.ERR_MSG_027);
-						return -1;
-					}
-					try {
-						/* set read event */
-						SelectionKey clientKey = myClient.getSocketChannel().register(mySelector, SelectionKey.OP_READ);
-						myClient.setSelectionKey(clientKey);
-					} catch (ClosedChannelException cce) {
-						cce.printStackTrace();
-						myClient.close();
-						return -1;
-					}
+					/* set read event */
+					SelectionKey clientKey = myClient.getSocketChannel().register(mySelector, SelectionKey.OP_READ);
+					myClient.setSelectionKey(clientKey);
 				}
 				else if (key.isReadable()) {
 					/* read from Server and process the message */
-					result = readChatMsg(key);
-					if (result == 1) {
-						processChatMsg();
+					ChatMessage cMsg = readChatMsg(key);
+					if (cMsg != null) {
+						processChatMsg(cMsg);
 					}
-					else if (result < 0) {
-						return result;
-					} 
 				}
 				else if(key.isWritable()) {
 					/* 3.write() */
@@ -171,18 +151,14 @@ public class Main {
 			
 			String inputMsg = manageMsgList(null);
 			if (inputMsg != null) {
-				result = processInputMsg(inputMsg);
-				if (result < 0) {
-					return result;
-				}
+				 processInputMsg(inputMsg);
 			}
 			
 		} /* end while loop */
 	}
 
 	/** process message */
-	private void processChatMsg() {
-		ChatMessage chatMsg = myClient.getReadData();
+	private void processChatMsg(ChatMessage chatMsg) throws Exception {
 		int msgtype = chatMsg.getMsgtype();
 		ByteBuffer msgBuf = chatMsg.getMessageBuffer();
 		
@@ -329,30 +305,20 @@ public class Main {
 	}
 
 	/** read from Server and process message */
-	private int readChatMsg(SelectionKey key) {
-		int readResult = 0;
-		readResult = myClient.readFromSocket();
-		switch (readResult) {
-		case ClientInfo.READ_MSG_ERROR:
-			myClient.close();
-			return -2; /* program exit */
-		case ClientInfo.READ_MSG_INCOMPLETE:
-			return 0;
-		case ClientInfo.READ_MSG_COMPLETE:
-			return 1;
-		default:
-			/* unknown result */
+	private ChatMessage readChatMsg(SelectionKey key) throws IOException, ProtocolParsingException {
+		myClient.readFromSocket();
+		if (myClient.getReadData().getStatus() == ChatMessage.READ_PAYLOAD_COMPLETE) {
+			return myClient.getReadData();
 		}
 		
-		return -2;
+		return null;
 	}
 
 	/** read from pipe(worker - System.in) and process message */
-	private int processInputMsg(String msg) {
+	private void processInputMsg(String msg) throws Exception {
 		if (myClient.getStatus() != ClientInfo.CLIENT_READY) {
 			/* input message is used on READY
 			 * So, drop this msg */
-			return 0;
 		}
 		
 		/* process input message */
@@ -360,12 +326,12 @@ public class Main {
 			if (msg.equals("/h")) {
 				/* help message */
 				helpMessage();
-				return 0;
+				return;
 			}
 			else if (msg.equals("/v")) {
 				/* view users message */
 				viewMessage();
-				return 0;
+				return;
 			}
 			else if (msg.equals("/q")) {
 				/* quit: program exit */
@@ -375,32 +341,31 @@ public class Main {
 					closeResource();
 				} catch (Exception e) {
 					e.printStackTrace();
+					throw e;
 				}
-				return -2;
+				/* TODO: throw new close exception */
 			}
-
 		}
 		else if (msg.length() > 4) {
 			String type = (String) msg.subSequence(0, 3);
 			if (type.equals("/u ")) {
 				/* upload file: this is process by worker */
-				return 0;
+				return;
 			}
 			else if (type.equals("/d ")) {
 				/* download file message */
 				downloadMessage(msg);
-				return 0;
+				return;
 			}
 			else if (type.equals("/k ")) {
 				/* kick off message */
 				/* TODO */
-				return 0;
+				return;
 			}
 		}
 		
 		/* Default: normal chat message */
 		sendMsgToServer(msg);
-		return 0;
 	}
 
 	private void closeResource() throws IOException {
@@ -410,12 +375,9 @@ public class Main {
 	}
 
 	/** request to get all users(id) from Server */
-	private void viewMessage() {
+	private void viewMessage() throws ProtocolParsingException {
 		/* make request message */
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_TAKE_FRIENDS, 0);
-		if (bufMsg == null) {
-			return;
-		}
 		bufMsg.flip();
 		myClient.writeToSocket(bufMsg);
 	}
@@ -432,22 +394,19 @@ public class Main {
 	}
 
 	/** send inputMsg to Server */
-	private void sendMsgToServer(String msg) {
+	private void sendMsgToServer(String msg) throws ProtocolParsingException {
 		/* make normal message: "ChatID: msg" */
 		String newMsg = myClient.getId() + ": " + msg;
 		ByteBuffer encodedMsg = charset.encode(newMsg);
 		int size = encodedMsg.remaining();
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REQUEST_MESSAGE, size);
-		if (bufMsg == null) {
-			return;
-		}
 		bufMsg.put(encodedMsg);
 		bufMsg.flip();
 		myClient.writeToSocket(bufMsg);
 	}
 
 	/** connect to server? */
-	private void checkConnection(SelectionKey key) {
+	private void checkConnection(SelectionKey key) throws Exception {
 		SocketChannel clientSocket = (SocketChannel) key.channel();
 		try {
 			while (clientSocket.isConnectionPending()) {
@@ -459,20 +418,19 @@ public class Main {
 		} catch (Exception e) {
 			Message.myLog(Message.ERR_MSG_024 + e.toString());
 			key.cancel();
-			e.printStackTrace();
-			return;
+			throw e;
 		}
 	}
 	
 	/** send registration message to server */ 
-	private int registerToServer() {
+	private void registerToServer() throws Exception {
 		SocketChannel clientSocket = myClient.getSocketChannel();
 		try {
 			clientSocket.register(mySelector, SelectionKey.OP_READ);
 		} catch (ClosedChannelException che) {
 			Message.myLog(Message.ERR_MSG_025 + che.toString());
 			che.printStackTrace();
-			return -1;
+			throw che;
 		}
 		
 		scan = new Scanner(System.in);
@@ -487,14 +445,9 @@ public class Main {
 		
 		/* make register message */
 		ByteBuffer newMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REGISTER, size);
-		if (newMsg == null) {
-			return -1;
-		}
 		newMsg.put(encodedMsg);
 		newMsg.flip();
 		myClient.writeToSocket(newMsg);
-		
-		return 0;
 	}
 	
 	/** start thread for System.in */
@@ -513,7 +466,12 @@ public class Main {
 						String isUploadFile = inputMsg.substring(0, 3);
 						if (isUploadFile.equals("/u ")) {
 							String filePath = inputMsg.substring(3);
-							uploadMessage(filePath.trim());
+							try {
+								uploadMessage(filePath.trim());
+							} catch (Exception e) {
+								e.printStackTrace();
+								Message.myLog(Message.SYS_MSG_011);
+							}
 							continue;
 						}
 					}
@@ -536,7 +494,7 @@ public class Main {
 	}
 	
 	/** send msg(upload start) to Server */
-	private void uploadMessage(String msg) {
+	private void uploadMessage(String msg) throws Exception {
 		/* make upload message: "ChatID_filename" */
 		
 		/* 1) check if file exists */
@@ -555,9 +513,6 @@ public class Main {
 		ByteBuffer encodedMsg = charset.encode(fileName);
 		int size = encodedMsg.remaining();
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REQUEST_UPLOAD, size);
-		if (bufMsg == null) {
-			return;
-		}
 		ChatMessage.setEndtypeToHeader(bufMsg, ChatProtocol.ENDTYPE_START);
 		bufMsg.put(encodedMsg);
 		bufMsg.flip();
@@ -571,7 +526,7 @@ public class Main {
 	}
 	
 	/** download msg(send download msg and start) */
-	private void downloadMessage(String msg) {
+	private void downloadMessage(String msg) throws ProtocolParsingException {
 		/* make new buffer and send to server */
 		if (myClient.isOnDownloading()) {
 			Message.printMsg("Multiple download is not accepted.");
@@ -582,9 +537,6 @@ public class Main {
 		ByteBuffer encodedMsg = charset.encode(fileName.trim());
 		int size = encodedMsg.remaining();
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REQUEST_DOWNLOAD, size);
-		if (bufMsg == null) {
-			return;
-		}
 		bufMsg.put(encodedMsg);
 		bufMsg.flip();
 		myClient.writeToSocket(bufMsg);

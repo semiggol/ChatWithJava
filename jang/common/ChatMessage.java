@@ -11,9 +11,6 @@ public class ChatMessage {
 	public static final byte READ_PAYLOAD_COMPLETE   = 2;
 	private byte status = READ_HEADER_INCOMPLETE;
 	
-	public static final int PARSE_RESULT_OK          =  0;
-	public static final int PARSE_RESULT_FAIL        = -1;
-	
 	private static final int PAYLOAD_LIMIT           = 32768; /* 32K */
 	
 	private ByteBuffer headerBuffer;
@@ -29,16 +26,16 @@ public class ChatMessage {
 	private boolean parseResult;
 	
 	/** parsing Header */
-	public int parseProtocol() {
+	public void parseProtocol() throws ProtocolParsingException {
 		/* check body */
 		if (status == READ_PAYLOAD_COMPLETE) {
-			return PARSE_RESULT_OK;
+			return;
 		}
 		else if (status == READ_PAYLOAD_INCOMPLETE) {
 			if (payload == messageBuffer.position() - ChatProtocol.HEADER_LEN) {
 				status = READ_PAYLOAD_COMPLETE;
 			}
-			return PARSE_RESULT_OK;
+			return;
 		}
 		
 		/* parse Header */
@@ -46,17 +43,17 @@ public class ChatMessage {
 		byte magic = headerBuffer.get();
 		if (magic != ChatProtocol.MAGIC) {
 			Message.myLog(Message.ERR_MSG_016 + magic);
-			return PARSE_RESULT_FAIL;
+			throw new ProtocolParsingException(Message.ERR_MSG_016, ChatProtocol.HEADER_MAGIC_OFFSET);
 		}
 		version = headerBuffer.get();
 		if (version != ChatProtocol.VERSION) {
 			Message.myLog(Message.ERR_MSG_017 + version);
-			return PARSE_RESULT_FAIL;
+			throw new ProtocolParsingException(Message.ERR_MSG_017, ChatProtocol.HEADER_VERSION_OFFSET);
 		}
 		msgtype = headerBuffer.get();
 		if (msgtype >= ChatProtocol.MSGTYPE_UNKNOWN) {
 			Message.myLog(Message.ERR_MSG_018 + msgtype);
-			return PARSE_RESULT_FAIL;
+			throw new ProtocolParsingException(Message.ERR_MSG_018, ChatProtocol.HEADER_MSGTYPE_OFFSET);
 		}
 		/* Message.myLog("[Debug]New Message arrived. -> " + msgtype);" */
 		endtype = headerBuffer.get();
@@ -65,13 +62,13 @@ public class ChatMessage {
 				endtype != ChatProtocol.ENDTYPE_ERROR &&
 				endtype != ChatProtocol.ENDTYPE_LAST) {
 			Message.myLog(Message.ERR_MSG_019 + endtype);
-			return PARSE_RESULT_FAIL;
+			throw new ProtocolParsingException(Message.ERR_MSG_019, ChatProtocol.HEADER_ENDTYPE_OFFSET);
 		}
 		
 		payload = headerBuffer.getInt();
 		if (payload < 0 || payload > PAYLOAD_LIMIT) {
 			Message.myLog(Message.ERR_MSG_020 + payload);
-			return PARSE_RESULT_FAIL;
+			throw new ProtocolParsingException(Message.ERR_MSG_020, ChatProtocol.HEADER_PAYLOAD_OFFSET);
 		}
 
 		headerBuffer.get(reserved, 0, 8);
@@ -89,7 +86,7 @@ public class ChatMessage {
 		messageBuffer.put(headerBuffer);
 		messageBuffer.position(ChatProtocol.HEADER_LEN);
 		
-		return PARSE_RESULT_OK; /* ok */
+		return; /* ok */
 	}
 	
 	public int getReadLength() {
@@ -157,14 +154,14 @@ public class ChatMessage {
 	}
 	
 	/** make new ByteBuffer for ChatMessage */
-	public static ByteBuffer makeNewMessage(byte msgtype, int payload) {
+	public static ByteBuffer makeNewMessage(byte msgtype, int payload) throws ProtocolParsingException {
 		if (msgtype >= ChatProtocol.MSGTYPE_UNKNOWN) {
 			Message.myLog(Message.ERR_MSG_018 + msgtype);
-			return null;
+			throw new ProtocolParsingException(Message.ERR_MSG_018, ChatProtocol.HEADER_MSGTYPE_OFFSET);
 		}
 		if (payload < 0) {
 			Message.myLog(Message.ERR_MSG_019 + payload);
-			return null;
+			throw new ProtocolParsingException(Message.ERR_MSG_019, ChatProtocol.HEADER_PAYLOAD_OFFSET);
 		}
 		
 		int size = ChatProtocol.HEADER_LEN + payload;

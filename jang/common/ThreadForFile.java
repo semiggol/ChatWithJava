@@ -44,18 +44,22 @@ public class ThreadForFile extends Thread {
 				break;
 			}
 			byte msgtype = msg.get(ChatProtocol.HEADER_MSGTYPE_OFFSET);
-			if (msgtype == ChatProtocol.MSGTYPE_REQUEST_DOWNLOAD) {
-				/* read file and transfer */
-				result = readFileAndTransfer(msg);
-			}
-			else {
-				/* save file: server/client */
-				result = saveMsgToFile(msg);
+			try {
+				if (msgtype == ChatProtocol.MSGTYPE_REQUEST_DOWNLOAD) {
+					/* read file and transfer */
+					result = readFileAndTransfer(msg);
+				}
+				else {
+					/* save file: server/client */
+					result = saveMsgToFile(msg);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+				break;
 			}
 			if (result != 0) {
 				break;
 			}
-			
 		} /* end while */
 
 		/* close fileChannel */
@@ -63,14 +67,13 @@ public class ThreadForFile extends Thread {
 			try {
 				dstFileChannel.close();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} 
 		}
 	}
 	
 	/** read file and write to Socket */
-	private int saveMsgToFile(ByteBuffer msg) {
+	private int saveMsgToFile(ByteBuffer msg) throws Exception {
 		int endtype = msg.get(ChatProtocol.HEADER_ENDTYPE_OFFSET);
 		if (endtype == ChatProtocol.ENDTYPE_START) {
 			/* 1.open FileChannel */
@@ -82,24 +85,12 @@ public class ThreadForFile extends Thread {
 				dstFileName = DFLT_UPLOAD_PATH + fileName;
 			}
 			dstPath = Paths.get(dstFileName);
-			try {
-				dstFileChannel = FileChannel.open(dstPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				return -1;
-			}
+			dstFileChannel = FileChannel.open(dstPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
 		}
 		else {
 			/* 2.write to FileChannel*/
 			msg.position(ChatProtocol.HEADER_LEN);
-			try {
-				dstFileChannel.write(msg);
-			} catch (IOException e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-				return -1;
-			}
+			dstFileChannel.write(msg);
 			
 			if (endtype == ChatProtocol.ENDTYPE_LAST) {
 				String s = Message.SYS_MSG_010 + "[ " + fileName + " ]";
@@ -111,9 +102,6 @@ public class ThreadForFile extends Thread {
 					
 					/* make register message */
 					ByteBuffer newMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REPLY_UPLOAD, size);
-					if (newMsg == null) {
-						return -1;
-					}
 					newMsg.put(encodedMsg);
 					newMsg.flip();
 					client.writeToSocket(newMsg);
@@ -128,7 +116,7 @@ public class ThreadForFile extends Thread {
 		return 0; /* incomplete */
 	}
 	
-	private int readFileAndTransfer(ByteBuffer msg) {
+	private int readFileAndTransfer(ByteBuffer msg) throws Exception {
 		msg.position(ChatProtocol.HEADER_LEN);
 		String fileName = charset.decode(msg).toString();
 		String filePath = ThreadForFile.DFLT_UPLOAD_PATH + fileName;
@@ -139,14 +127,10 @@ public class ThreadForFile extends Thread {
 			ByteBuffer encodedMsg = charset.encode(fileName + " is not found.");
 			int size = encodedMsg.remaining();
 			ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REPLY_DOWNLOAD, size);
-			if (bufMsg == null) {
-				return -1;
-			}
 			ChatMessage.setEndtypeToHeader(bufMsg, ChatProtocol.ENDTYPE_ERROR);
 			bufMsg.put(encodedMsg);
 			bufMsg.flip();
 			client.writeToSocket(bufMsg);
-			
 			return 1;
 		}
 		
@@ -154,9 +138,6 @@ public class ThreadForFile extends Thread {
 		ByteBuffer encodedMsg = charset.encode(fileName);
 		int size = encodedMsg.remaining();
 		ByteBuffer bufMsg = ChatMessage.makeNewMessage(ChatProtocol.MSGTYPE_REPLY_DOWNLOAD, size);
-		if (bufMsg == null) {
-			return -1;
-		}
 		ChatMessage.setEndtypeToHeader(bufMsg, ChatProtocol.ENDTYPE_START);
 		bufMsg.put(encodedMsg);
 		bufMsg.flip();
@@ -168,7 +149,7 @@ public class ThreadForFile extends Thread {
 	}
 	
 	/** read file and write to Socket */
-	public static void transferFileToSocket(String srcFileName, ClientInfo remote) {
+	public static void transferFileToSocket(String srcFileName, ClientInfo remote) throws Exception {
 		Path srcPath = Paths.get(srcFileName);
 		FileChannel srcFileChannel = null;
 		long fileSize = 0L;
