@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+
+<project name="Chat" default="build" basedir=".">
+  <target name="build">
+    <delete dir="./bin"/>
+    <mkdir dir="./bin"/>
+    <javac srcdir="./" destdir="./bin" includeantruntime="false">
+    </javac>
+  </target>
+
+  <target name="server">
+    <javac srcdir="./" destdir="./bin" includeantruntime="false">
+    </javac>
+    <java classpath="./bin" classname="jang.server.Main">
+    </java>
+  </target>
+
+  <target name="client">
+    <javac srcdir="./" destdir="./bin" includeantruntime="false">
+    </javac>
+    <java classpath="./bin" classname="jang.client.Main">
+    </java>
+  </target>
+</project>
