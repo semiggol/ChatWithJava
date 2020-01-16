@@ -11,6 +11,7 @@
   <target name="server">
     <javac srcdir="./" destdir="./bin" includeantruntime="false">
     </javac>
+    <copy file="./jang/server/server.properties" todir="./bin/jang/server/"/>
     <java classpath="./bin" classname="jang.server.Main">
     </java>
   </target>
@@ -18,6 +19,7 @@
   <target name="client">
     <javac srcdir="./" destdir="./bin" includeantruntime="false">
     </javac>
+    <copy file="./jang/client/client.properties" todir="./bin/jang/client/"/>
     <java classpath="./bin" classname="jang.client.Main">
     </java>
   </target>

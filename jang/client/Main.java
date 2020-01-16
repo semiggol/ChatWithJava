@@ -1,6 +1,8 @@
 package jang.client;
 
+import java.io.FileReader;
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
@@ -9,6 +11,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.Properties;
 import java.util.Scanner;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -23,8 +26,13 @@ import jang.common.ThreadForFile;
 
 
 public class Main {
-	private static final String SERVER_IP   = "192.168.13.56";
-	private static final int SERVER_PORT    = 8080;
+	private static final String configFile = "client.properties";
+	
+	/* configuration */
+	private String serverIp;
+	private int serverPort;
+	private long maxUploadSize;
+	private String downloadDir;
 	
 	private Selector mySelector;
 	private ClientInfo myClient;
@@ -50,6 +58,9 @@ public class Main {
 	}
 	
 	private void start() throws Exception {
+		/* get config */
+		initConfig();
+		
 		int result = 0;
 		while (true) {
 			/* init - prepare selector, ClientInfo, pipe, .. */
@@ -70,9 +81,54 @@ public class Main {
 		}
 	}
 	
+	private void initConfig() throws Exception {
+		/* get configuration from client.properties */
+		String path = Main.class.getResource(configFile).getPath();
+		path = URLDecoder.decode(path, "utf-8");
+		Properties properties = new Properties();
+		properties.load(new FileReader(path));
+		
+		/* get server.ip */
+		serverIp = properties.getProperty("server.ip");
+		if (serverIp == null || serverIp.isEmpty()) {
+			Message.myLog(Message.ERR_MSG_101);
+			throw new Exception(Message.ERR_MSG_101);
+		}
+		/* get server.port */
+		String sPort = properties.getProperty("server.port");
+		if (sPort == null || sPort.isEmpty()) {
+			Message.myLog(Message.ERR_MSG_102);
+			throw new Exception(Message.ERR_MSG_102);
+		}
+		serverPort = Integer.parseInt(sPort);
+		/* get max.upload.size */
+		String sMaxUploadSize = properties.getProperty("max.upload.size");
+		if (sMaxUploadSize == null || sMaxUploadSize.isEmpty()) {
+			/* use default */
+			maxUploadSize = ChatProtocol.DFLT_TRANSFER_SIZE;
+			Message.myLog(Message.ERR_MSG_103 + "default=" + maxUploadSize);
+		}
+		else {
+			maxUploadSize = Long.parseLong(sMaxUploadSize);
+		}
+		/* get download.dir */
+		downloadDir = properties.getProperty("download.dir");
+		if (downloadDir == null || downloadDir.isEmpty()) {
+			downloadDir = Main.class.getResource("").getPath();
+			Message.myLog(Message.ERR_MSG_104 + "default=" + downloadDir);
+		}
+		
+		Message.myLog("[Configuration]");
+		Message.myLog("\t 1)serverIp \t\t= " + serverIp);
+		Message.myLog("\t 2)serverPort \t\t= " + serverPort);
+		Message.myLog("\t 3)maxUploadSize \t= " + maxUploadSize);
+		Message.myLog("\t 4)downadDir \t\t= " + downloadDir);
+		Message.myLog("[Configuration]");
+	}
+	
 	/** init selector, client, pipe */
 	private int initClient() {
-		Network nwk = new Network(SERVER_IP, SERVER_PORT);
+		Network nwk = new Network(serverIp, serverPort);
 		mySelector = nwk.getSelector();
 		if (mySelector == null) {
 			return -1;
@@ -94,6 +150,7 @@ public class Main {
 		myClient = new ClientInfo();
 		myClient.setCreated(ClientInfo.CREATED_BY_CLIENT);
 		myClient.setStatus(ClientInfo.CLIENT_CONNECTING);
+		myClient.setDownloadDir(downloadDir);
 		
 		/* create input message list for System.in */
 		inputMsgs = new LinkedList<String>();
@@ -498,9 +555,13 @@ public class Main {
 		/* make upload message: "ChatID_filename" */
 		
 		/* 1) check if file exists */
-		int result = ThreadForFile.checkIfFileExists(msg);
-		if (result < 0) {
+		long fileSize = ThreadForFile.checkIfFileExists(msg);
+		if (fileSize < 0) {
 			/* this upload Message is ignored.. */
+			return;
+		}
+		else if (fileSize > maxUploadSize) {
+			Message.myLog(Message.SYS_MSG_012 + "fileSize=" + fileSize + ", limit=" + maxUploadSize);
 			return;
 		}
 		
@@ -532,7 +593,6 @@ public class Main {
 			Message.printMsg("Multiple download is not accepted.");
 			return;
 		}
-		myClient.setOnDownloading(true);
 		String fileName = msg.substring(3);
 		ByteBuffer encodedMsg = charset.encode(fileName.trim());
 		int size = encodedMsg.remaining();

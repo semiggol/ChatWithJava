@@ -42,6 +42,15 @@ public class Message {
 	public static final String ERR_MSG_033 = "Unknown Message arrived.";
 	public static final String ERR_MSG_034 = "Normal file is not found.";
 	
+	/* for configuration */
+	public static final String ERR_MSG_101 = "server.ip is required in client.properties file.";
+	public static final String ERR_MSG_102 = "server.port is required in client.properties file.";
+	public static final String ERR_MSG_103 = "max.upload.size is not set in client.properties file.";
+	public static final String ERR_MSG_104 = "download.dir is not set in client.properties file.";
+	public static final String ERR_MSG_201 = "port is required in server.properties file.";
+	public static final String ERR_MSG_202 = "max.clients is not set in server.properties file.";
+	public static final String ERR_MSG_203 = "upload.dir is not set in server.properties file.";
+	
 	/* syslog */
 	public static final String SYS_MSG_001 = "Selector.open() is done.";
 	public static final String SYS_MSG_002 = "Server Port is opened.";
@@ -54,7 +63,7 @@ public class Message {
 	public static final String SYS_MSG_009 = "Program is closed by user(/q).";
 	public static final String SYS_MSG_010 = "File is transfered.";
 	public static final String SYS_MSG_011 = "File transfer is failed.";
-	public static final String SYS_MSG_012 = "Size of File to transfer is over MAX(100M).";
+	public static final String SYS_MSG_012 = "Size of File to transfer is over MAX(default=100M).";
 	
 	
 	private static SimpleDateFormat formatDate = new SimpleDateFormat("yyyy-MM-dd");

@@ -12,9 +12,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class ThreadForFile extends Thread {
 	
-	public static String DFLT_UPLOAD_PATH   = "/home/tmax/chat/upload/";
-	public static String DFLT_DOWNOAD_PATH  = "/home/tmax/chat/download/";
-	
 	private ClientInfo client;
 	
 	private LinkedBlockingQueue<ByteBuffer> lbq;
@@ -79,10 +76,10 @@ public class ThreadForFile extends Thread {
 			/* 1.open FileChannel */
 			fileName = client.getUploadedFileName();
 			if (client.getCreated() == ClientInfo.CREATED_BY_CLIENT) {
-				dstFileName = DFLT_DOWNOAD_PATH + fileName;
+				dstFileName = client.getDownloadDir() + fileName;
 			}
 			else {
-				dstFileName = DFLT_UPLOAD_PATH + fileName;
+				dstFileName = client.getUploadDir() + fileName;
 			}
 			dstPath = Paths.get(dstFileName);
 			dstFileChannel = FileChannel.open(dstPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -119,10 +116,10 @@ public class ThreadForFile extends Thread {
 	private int readFileAndTransfer(ByteBuffer msg) throws Exception {
 		msg.position(ChatProtocol.HEADER_LEN);
 		String fileName = charset.decode(msg).toString();
-		String filePath = ThreadForFile.DFLT_UPLOAD_PATH + fileName;
+		String filePath = client.getUploadDir() + fileName;
 		/* 1) check if file exists */
-		int result = ThreadForFile.checkIfFileExists(filePath);
-		if (result < 0) {
+		long fileSize = ThreadForFile.checkIfFileExists(filePath);
+		if (fileSize < 0) {
 			/* 1-1) write chat(error) message */
 			ByteBuffer encodedMsg = charset.encode(fileName + " is not found.");
 			int size = encodedMsg.remaining();
@@ -224,7 +221,7 @@ public class ThreadForFile extends Thread {
 	}
 	
 	/** check if file exists */
-	public static int checkIfFileExists(String msg) {
+	public static long checkIfFileExists(String msg) {
 		if (msg == null || msg.length() < 0) {
 			return -1;
 		}
@@ -232,7 +229,7 @@ public class ThreadForFile extends Thread {
 		File file = new File(msg);
 		if (file.exists() && file.isFile()) {
 			/* file exists */
-			return 0;
+			return file.length();
 		}
 		
 		Message.myLog(Message.ERR_MSG_034  + " input: " + msg);

@@ -45,6 +45,8 @@ public class ClientInfo {
 	/* for uploaded file */
 	private LinkedBlockingQueue<ByteBuffer> fileContents;
 	private String uploadedFileName;
+	private String uploadDir;
+	private String downloadDir;
 	private int uploadedCount;
 	private ThreadForFile worker;
 	
@@ -265,5 +267,17 @@ public class ClientInfo {
 	}
 	public void setOnDownloading(boolean onDownloading) {
 		this.onDownloading = onDownloading;
+	}
+	public String getUploadDir() {
+		return uploadDir;
+	}
+	public void setUploadDir(String uploadDir) {
+		this.uploadDir = uploadDir;
+	}
+	public String getDownloadDir() {
+		return downloadDir;
+	}
+	public void setDownloadDir(String downloadDir) {
+		this.downloadDir = downloadDir;
 	}
 }

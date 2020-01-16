@@ -1,6 +1,8 @@
 package jang.server;
 
+import java.io.FileReader;
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
@@ -11,6 +13,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import jang.common.ChatMessage;
@@ -23,17 +26,21 @@ import jang.common.ResourceInfo;
 import jang.common.ThreadForFile;
 
 public class Main {
-	/* TODO: need configuration */
-	private static final String SERVER_IP = "192.168.13.56";
-	private static final int SERVER_PORT  = 8080;
-	private static final int MAX_CLIENT   = 100;
+	private static final String configFile = "server.properties";
+
+	/* configuration */
+	private int serverPort;
+	private int maxClients;
+	private String uploadDir;
+	
+	private static final int DFLT_MAX_CLIENT   = 100;
 	private Selector mySelector = null;
 	private Charset charset = null;
 	
 	private int currentClients;
 	private ArrayList<ClientInfo> users;
 	
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
 		ResourceInfo.infoSystemProperties(ResourceInfo.CHAT_TYPE_SERVER);
 		
 		System.setSecurityManager(new SecurityManager() {
@@ -49,11 +56,15 @@ public class Main {
 		chatServer.start();
 	}
 	
-	private void start() {
+	private void start() throws Exception {
+		
+		/* get config */
+		initConfig();
+		
 		Network myNetwork = null;
 		while (true) {
 			/* init network() - prepare selector/serverSocket */
-			myNetwork = initNetwork(SERVER_IP, SERVER_PORT);
+			myNetwork = initNetwork(serverPort);
 			if (myNetwork == null) {
 				return;
 			}
@@ -63,10 +74,48 @@ public class Main {
 		}
 	}
 	
+	private void initConfig() throws Exception {
+		/* get configuration from client.properties */
+		String path = Main.class.getResource(configFile).getPath();
+		path = URLDecoder.decode(path, "utf-8");
+		Properties properties = new Properties();
+		properties.load(new FileReader(path));
+		
+		/* get port */
+		String sPort = properties.getProperty("port");
+		if (sPort == null || sPort.isEmpty()) {
+			Message.myLog(Message.ERR_MSG_201);
+			throw new Exception(Message.ERR_MSG_201);
+		}
+		serverPort = Integer.parseInt(sPort);
+		/* get max.clients */
+		String sMaxClients = properties.getProperty("max.clients");
+		if (sMaxClients == null || sMaxClients.isEmpty()) {
+			/* use default */
+			maxClients = DFLT_MAX_CLIENT;
+			Message.myLog(Message.ERR_MSG_202 + "default=" + sMaxClients);
+		}
+		else {
+			maxClients = Integer.parseInt(sMaxClients);
+		}
+		/* get upload.dir */
+		uploadDir = properties.getProperty("upload.dir");
+		if (uploadDir == null || uploadDir.isEmpty()) {
+			uploadDir = Main.class.getResource("").getPath();
+			Message.myLog(Message.ERR_MSG_203 + "default=" + uploadDir);
+		}
+		
+		Message.myLog("[Configuration]");
+		Message.myLog("\t 1)serverPort \t= " + serverPort);
+		Message.myLog("\t 2)maxClients \t= " + maxClients);
+		Message.myLog("\t 3)uploadDir \t= " + uploadDir);
+		Message.myLog("[Configuration]");
+	}
+	
 	/** init selector */
-	private Network initNetwork(String listenIp, int listenPort) {
+	private Network initNetwork(int listenPort) {
 		boolean err = false;
-		Network nwk = new Network(listenIp, listenPort);
+		Network nwk = new Network(listenPort);
 		mySelector = nwk.getSelector();
 		try {
 			nwk.createServer();
@@ -188,8 +237,6 @@ public class Main {
 		/* add NewClientInfo */
 		ClientInfo client = addClientInfo(clientSocket);
 		if (client == null) {
-			/* failed to add(new client) */
-			Message.myLog(Message.ERR_MSG_011);
 			return;	
 		}
 		client.setSelectionKey(clientKey);
@@ -212,13 +259,16 @@ public class Main {
 			currentClients = 0;
 		}
 		
-		if (currentClients >= MAX_CLIENT) {
+		if (currentClients >= maxClients) {
+			/* failed to add(new client) */
+			Message.myLog(Message.ERR_MSG_011);
 			return null;
 		}
 		
 		ClientInfo client = new ClientInfo();
 		client.setSocketChannel(clientSocket);
 		client.setStatus(ClientInfo.CLIENT_CONNECTED);
+		client.setUploadDir(uploadDir);
 		
 		users.add(client);
 		currentClients++;
@@ -410,7 +460,7 @@ public class Main {
 		
 		/* get receivedFileName */
 		msg.position(ChatProtocol.HEADER_LEN);
-   	String receivedFileName = ThreadForFile.DFLT_UPLOAD_PATH + charset.decode(msg).toString();
+   	String receivedFileName = client.getUploadDir() + charset.decode(msg).toString();
    	client.setUploadedFileName(receivedFileName);
    	
    	/* create lbq */
